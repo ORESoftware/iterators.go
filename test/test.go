@@ -73,6 +73,40 @@ func main() {
 
 	for r := range iter.Sequence[int](NewIterable()) {
 
+		if r.Done {
+			panic("never should be done")
+		}
+
+		//time.Sleep(time.Millisecond * 500)
+
+		go func(r iter.Ret[int]) {
+
+			fmt.Println("value e:", r)
+			time.Sleep(time.Millisecond * 500)
+			r.StartNextTask()
+			r.MarkTaskAsComplete()
+
+			go func(r iter.Ret[int]) {
+				time.Sleep(time.Millisecond * 500)
+				r.StartNextTask()
+			}(r)
+
+			//fmt.Println("value z:", r)
+			//if !r.Done {
+			//
+			//}
+		}(r)
+
+	}
+
+	fmt.Println("exiting 1")
+
+	for r := range iter.Sequence[int](NewIterable()) {
+
+		if r.Done {
+			panic("never should be done")
+		}
+
 		//time.Sleep(time.Millisecond * 500)
 
 		r.StartNextTask()
@@ -90,11 +124,15 @@ func main() {
 
 	}
 
-	fmt.Println("exiting")
+	fmt.Println("exiting 2")
 
 	s := make(chan int, 5)
 
 	for r := range iter.Sequence[int](NewIterable()) {
+
+		if r.Done {
+			panic("never should be done")
+		}
 
 		//time.Sleep(time.Millisecond * 500)
 
@@ -138,6 +176,11 @@ func main() {
 	}
 
 	for r := range iter.Sequence[int](NewIterable0()) {
+
+		if r.Done {
+			panic("never should be done")
+		}
+
 		fmt.Println("value 0:", r)
 
 		if !r.Done {
@@ -148,12 +191,22 @@ func main() {
 	}
 
 	for r := range iter.Sequence[int](NewIterable1()) {
+
+		if r.Done {
+			panic("never should be done")
+		}
+
 		fmt.Println("value 1:", r)
 		r.StartNextTask()
 		r.MarkTaskAsComplete()
 	}
 
 	for r := range iter.Sequence[int](NewIterable2()) {
+
+		if r.Done {
+			panic("never should be done")
+		}
+
 		fmt.Println("value 2:", r)
 		r.StartNextTask()
 		r.MarkTaskAsComplete()
@@ -166,7 +219,7 @@ func main() {
 	for r := range iter.AsyncSequence(lrt) {
 
 		if r.Done {
-			break
+			panic("never should be done")
 		}
 
 		fmt.Println("boof:", r)

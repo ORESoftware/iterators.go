@@ -35,6 +35,12 @@ type HasNext[T any] interface {
 	Next() (bool, T)
 }
 
+func doUnlock(m *sync.Mutex) {
+	if m != nil {
+		m.Unlock()
+	}
+}
+
 func Sequence[T any](even HasNext[T]) chan Ret[T] {
 
 	var c = make(chan Ret[T], 1)
@@ -44,13 +50,15 @@ func Sequence[T any](even HasNext[T]) chan Ret[T] {
 	var done = false
 	var count = 0
 
-	var x func()
+	var x func(m *sync.Mutex)
 
-	x = func() {
+	x = func(m *sync.Mutex) {
+
 		lck.Lock()
 		if closingOrClosed {
 			fmt.Println("warning channel closed (Continue called1 twice?)")
 			lck.Unlock()
+			doUnlock(m)
 			return
 		}
 		concurrency <- 1
@@ -63,12 +71,14 @@ func Sequence[T any](even HasNext[T]) chan Ret[T] {
 				close(c)
 			}
 			lck.Unlock()
+			doUnlock(m)
 			return
 		}
 
 		lck.Unlock()
 
 		if done {
+			doUnlock(m)
 			return
 		}
 
@@ -77,13 +87,14 @@ func Sequence[T any](even HasNext[T]) chan Ret[T] {
 
 		var l = sync.Mutex{}
 		count++
+		doUnlock(m)
+
 		c <- Ret[T]{b, v, func() {
 			l.Lock()
 			if !called1 {
 				called1 = true
-				l.Unlock()
 				if !closingOrClosed {
-					go x()
+					go x(&l)
 				}
 				return
 			}
@@ -107,7 +118,7 @@ func Sequence[T any](even HasNext[T]) chan Ret[T] {
 		//}
 	}
 
-	go x()
+	go x(nil)
 	return c
 
 }
