@@ -38,17 +38,17 @@ func (n *Iterable[int]) Next() (bool, int) {
 	return false, int(n.Val)
 }
 
-func newEven() *Iterable[int] {
+func NewIterable() *Iterable[int] {
 	n := 0
 	return &Iterable[int]{n, 55}
 }
 
 func main() {
-	//even := newEven()
+	//even := NewIterable()
 	//println(even.Next()) // Example usage
 	//println(even.Next())
 
-	even := newEven()
+	even := NewIterable()
 
 	//for {
 	//	var b, v = even.Next()
