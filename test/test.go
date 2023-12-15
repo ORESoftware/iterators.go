@@ -40,15 +40,28 @@ func (n *Iterable[int]) Next() (bool, int) {
 
 func NewIterable() *Iterable[int] {
 	n := 0
-	return &Iterable[int]{n, 55}
+	return &Iterable[int]{n, 20}
+}
+
+func NewIterable0() *Iterable[int] {
+	n := -1
+	return &Iterable[int]{n, 0}
+}
+
+func NewIterable1() *Iterable[int] {
+	n := 0
+	return &Iterable[int]{n, 1}
+}
+
+func NewIterable2() *Iterable[int] {
+	n := 1
+	return &Iterable[int]{n, 3}
 }
 
 func main() {
 	//even := NewIterable()
 	//println(even.Next()) // Example usage
 	//println(even.Next())
-
-	even := NewIterable()
 
 	//for {
 	//	var b, v = even.Next()
@@ -58,31 +71,52 @@ func main() {
 	//	}
 	//}
 
+	for r := range iter.Sequence[int](NewIterable()) {
+
+		//time.Sleep(time.Millisecond * 500)
+
+		r.StartNextTask()
+
+		go func(r iter.Ret[int]) {
+
+			fmt.Println("value z:", r)
+			time.Sleep(time.Millisecond * 500)
+			r.MarkTaskAsComplete()
+			//fmt.Println("value z:", r)
+			//if !r.Done {
+			//
+			//}
+		}(r)
+
+	}
+
+	fmt.Println("exiting")
+
 	s := make(chan int, 5)
 
-	for r := range iter.Sequence[int](even) {
+	for r := range iter.Sequence[int](NewIterable()) {
 
 		//time.Sleep(time.Millisecond * 500)
 
 		s <- 1
 
-		if !r.Done {
-			r.Contnue()
-		}
+		//if !r.Done {
+		r.StartNextTask()
+		//}
 
 		//time.Sleep((1 / 1) * time.Second)
 
 		//if true || !r.Done {
 		//
-		//	r.Contnue()
-		//	r.Contnue()
+		//	r.StartNextTask()
+		//	r.StartNextTask()
 		//
 		//}
-		fmt.Println("value:", r.Value)
+		fmt.Println("value:", r)
 
 		if true || !r.Done {
 
-			go func() {
+			go func(r iter.Ret[int]) {
 				source := rand.NewSource(time.Now().UnixNano())
 				rnd := rand.New(source)
 
@@ -90,16 +124,39 @@ func main() {
 				i := rnd.Intn(1500) + 1
 				time.Sleep(time.Duration(i) * time.Millisecond)
 				<-s
-			}()
+				r.MarkTaskAsComplete()
+			}(r)
 
-			//r.Contnue()
+			//r.StartNextTask()
 		}
 
 		//go func() {
 		//	time.Sleep(1 * time.Second)
-		//	r.Contnue()
+		//	r.StartNextTask()
 		//}()
 
+	}
+
+	for r := range iter.Sequence[int](NewIterable0()) {
+		fmt.Println("value 0:", r)
+
+		if !r.Done {
+			r.StartNextTask()
+		}
+
+		r.MarkTaskAsComplete()
+	}
+
+	for r := range iter.Sequence[int](NewIterable1()) {
+		fmt.Println("value 1:", r)
+		r.StartNextTask()
+		r.MarkTaskAsComplete()
+	}
+
+	for r := range iter.Sequence[int](NewIterable2()) {
+		fmt.Println("value 2:", r)
+		r.StartNextTask()
+		r.MarkTaskAsComplete()
 	}
 
 	fmt.Println("hello?")
@@ -112,9 +169,10 @@ func main() {
 			break
 		}
 
-		fmt.Println(r)
+		fmt.Println("boof:", r)
 		time.Sleep(time.Second * 1)
-		r.Contnue()
+		r.StartNextTask()
+		r.MarkTaskAsComplete()
 	}
 
 }
