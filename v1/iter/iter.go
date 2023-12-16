@@ -71,9 +71,11 @@ func AsyncSequence[T any](v chan T) chan Ret[T] {
 
 // TODO: do Read() interface
 
-func doUnlock(m *sync.Mutex) {
-	if m != nil {
-		m.Unlock()
+func doUnlock(locks ...*sync.Mutex) {
+	for _, lck := range locks {
+		if lck != nil {
+			lck.Unlock()
+		}
 	}
 }
 
@@ -102,16 +104,15 @@ func Sequence[T any](even HasNext[T]) chan Ret[T] {
 	var done = false
 	var count = 0
 
-	var x func(m *sync.Mutex)
+	var writeToChan func(m *sync.Mutex)
 
-	x = func(m *sync.Mutex) {
+	writeToChan = func(m *sync.Mutex) {
 
 		lck.Lock()
 
 		if closingOrClosed {
 			fmt.Println("warning channel closed (Continue called1 twice?)")
-			doUnlock(m)
-			lck.Unlock()
+			doUnlock(m, &lck)
 			return
 		}
 
@@ -126,21 +127,18 @@ func Sequence[T any](even HasNext[T]) chan Ret[T] {
 				done = true
 				close(c)
 			}
-			doUnlock(m)
-			lck.Unlock()
+			doUnlock(m, &lck)
 			return
 		}
 
 		if done {
-			doUnlock(m)
-			lck.Unlock()
+			doUnlock(m, &lck)
 			return
 		}
 
 		concurrency <- 1
 		count++
-		doUnlock(m)
-		lck.Unlock()
+		doUnlock(m, &lck)
 
 		var called1 = false
 		var called2 = false
@@ -151,13 +149,14 @@ func Sequence[T any](even HasNext[T]) chan Ret[T] {
 			if !called1 {
 				called1 = true
 				if !closingOrClosed {
-					go x(&l)
+					// we pass &l pass that we block here ***+++
+					go writeToChan(&l)
 				}
 				return
 			}
 			l.Unlock()
 		}, func() {
-			l.Lock()
+			l.Lock() // need to block here ***+++
 			if !called2 {
 				called2 = true
 				count--
@@ -170,12 +169,9 @@ func Sequence[T any](even HasNext[T]) chan Ret[T] {
 			l.Unlock()
 		}}
 
-		//if closingOrClosed {
-		//	close(c)
-		//}
 	}
 
-	go x(nil)
+	go writeToChan(nil)
 	return c
 
 }
