@@ -31,14 +31,26 @@ func AsyncSequence[T any](v chan T) chan Ret[T] {
 
 // TODO: do Read() interface
 
-type HasNext[T any] interface {
-	Next() (bool, T)
-}
-
 func doUnlock(m *sync.Mutex) {
 	if m != nil {
 		m.Unlock()
 	}
+}
+
+type HasNext[T any] interface {
+	Next() (bool, T)
+}
+
+type internalSeq[T any] struct {
+	n struct{ Next func() (bool, T) }
+}
+
+func (s *internalSeq[T]) Next() (bool, T) {
+	return s.n.Next()
+}
+
+func Seq[T any](req struct{ Next func() (bool, T) }) chan Ret[T] {
+	return Sequence[T](&internalSeq[T]{req})
 }
 
 func Sequence[T any](even HasNext[T]) chan Ret[T] {
