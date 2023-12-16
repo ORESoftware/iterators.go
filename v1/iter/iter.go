@@ -5,6 +5,46 @@ import (
 	"sync"
 )
 
+type ConnectToProducer[T any] interface {
+	ConnectToProducer() chan T
+}
+
+type ConnectToConsumer[T any] interface {
+	ConnectToConsumer() chan T
+}
+
+type ReadStream[T any, K any] struct {
+	c <-chan T
+}
+
+type DuplexStream[T any] struct {
+	c chan T
+}
+
+type ITransformStream[T any, K any] interface {
+	Transform(c chan T) chan K
+}
+
+type TransformStream[K any, T any] struct {
+	c chan T
+}
+
+//func (t *TransformStream[int, int]) Transform(c chan int) chan int {
+//	k := make(chan int)
+//	for x := range c {
+//		k <- x
+//	}
+//	return k
+//}
+
+func (r *ReadStream[T, K]) Pipe() {
+
+}
+
+func (t *TransformStream[T, K]) Pipe() {
+
+}
+
 type Ret[T any] struct {
 	Done               bool
 	Value              T
@@ -67,39 +107,44 @@ func Sequence[T any](even HasNext[T]) chan Ret[T] {
 	x = func(m *sync.Mutex) {
 
 		lck.Lock()
+
 		if closingOrClosed {
 			fmt.Println("warning channel closed (Continue called1 twice?)")
-			lck.Unlock()
 			doUnlock(m)
+			lck.Unlock()
 			return
 		}
-		concurrency <- 1
 
+		// they are all reading from the same channel
+		// so if this call blocks, then all the other Next() calls would block too anyway
+		// so it's ok (and probably imperative) to surround the Next() call with locks lol fml
 		var b, v = even.Next()
 		if b {
+			// we now know the channel/stream is done reading from, etc
 			closingOrClosed = true
 			if !done && count <= 0 {
 				done = true
 				close(c)
 			}
-			lck.Unlock()
 			doUnlock(m)
+			lck.Unlock()
 			return
 		}
-
-		lck.Unlock()
 
 		if done {
 			doUnlock(m)
+			lck.Unlock()
 			return
 		}
 
-		var called1 = false
-		var called2 = false
-
-		var l = sync.Mutex{}
+		concurrency <- 1
 		count++
 		doUnlock(m)
+		lck.Unlock()
+
+		var called1 = false
+		var called2 = false
+		var l = sync.Mutex{}
 
 		c <- Ret[T]{b, v, func() {
 			l.Lock()
