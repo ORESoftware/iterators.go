@@ -71,6 +71,22 @@ func SeqFromList[T any](v []T) chan Ret[T] {
 	return Sequence[T](&FromList[T]{v, 0})
 }
 
+type HsNext[T any] struct {
+	Next func() (bool, T)
+}
+
+type FromNexter[T any] struct {
+	c HsNext[T]
+}
+
+func (h *FromNexter[T]) Next() (bool, T) {
+	return h.c.Next()
+}
+
+func FromNext[T any](v HsNext[T]) chan Ret[T] {
+	return Sequence[T](&FromNexter[T]{v})
+}
+
 type FromChan[T any] struct {
 	c chan T
 }
@@ -136,7 +152,7 @@ func Sequence[T any](h HasNext[T]) chan Ret[T] {
 	var c = make(chan Ret[T], 1)
 	var lck = sync.Mutex{}
 	var closingOrClosed = false
-	var concurrency = make(chan int, 5)
+	var maxConcurrency = make(chan int, 5)
 	var done = false
 	var count = 0
 
@@ -172,7 +188,7 @@ func Sequence[T any](h HasNext[T]) chan Ret[T] {
 			return
 		}
 
-		concurrency <- 1
+		maxConcurrency <- 1
 		count++
 		doUnlock(m, &lck)
 
@@ -196,7 +212,7 @@ func Sequence[T any](h HasNext[T]) chan Ret[T] {
 			if !called2 {
 				called2 = true
 				count--
-				<-concurrency
+				<-maxConcurrency
 				if !done && count <= 0 {
 					done = true
 					close(c)
