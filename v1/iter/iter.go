@@ -29,13 +29,13 @@ type TransformStream[K any, T any] struct {
 	c chan T
 }
 
-//func (t *TransformStream[int, int]) Transform(c chan int) chan int {
+// func (t *TransformStream[int, int]) Transform(c chan int) chan int {
 //	k := make(chan int)
 //	for x := range c {
 //		k <- x
 //	}
 //	return k
-//}
+// }
 
 func (r *ReadStream[T, K]) Pipe() {
 
@@ -52,22 +52,41 @@ type Ret[T any] struct {
 	MarkTaskAsComplete func()
 }
 
-type HasNexter[T any] struct {
+type FromList[T any] struct {
+	list  []T
+	index int
+}
+
+func (h *FromList[T]) Next() (bool, T) {
+	if h.index >= len(h.list) {
+		var zero T // zero value of type T
+		return true, zero
+	}
+	el := h.list[h.index]
+	h.index++
+	return false, el
+}
+
+func SeqFromList[T any](v []T) chan Ret[T] {
+	return Sequence[T](&FromList[T]{v, 0})
+}
+
+type FromChan[T any] struct {
 	c chan T
 }
 
-func (h HasNexter[T]) Next() (bool, T) {
+func (h *FromChan[T]) Next() (bool, T) {
 	value, ok := <-h.c
 	return !ok, value
 }
 
 func AsyncSequence[T any](v chan T) chan Ret[T] {
-	return Sequence[T](HasNexter[T]{v})
+	return Sequence[T](&FromChan[T]{v})
 }
 
-//func SequenceFromROChan[T any](v <-chan T) chan Ret[T] {
-//	return Sequence[T](HasNexter[T]{v})
-//}
+// func SequenceFromROChan[T any](v <-chan T) chan Ret[T] {
+//	return Sequence[T](FromChan[T]{v})
+// }
 
 // TODO: do Read() interface
 
@@ -95,7 +114,24 @@ func Seq[T any](req struct{ Next func() (bool, T) }) chan Ret[T] {
 	return Sequence[T](&internalSeq[T]{req})
 }
 
-func Sequence[T any](even HasNext[T]) chan Ret[T] {
+// IOReader
+type IOReader interface {
+	Read(p []byte) (n int, err error)
+}
+
+type Reader[T any] interface {
+	Read(p []T) (n int, err error) // the array represents how many times reading from a chan
+}
+
+type IOWriter interface {
+	Write(p []byte) (n int, err error)
+}
+
+type Writer[T any] interface {
+	Write(p []T) (n int, err error)
+}
+
+func Sequence[T any](h HasNext[T]) chan Ret[T] {
 
 	var c = make(chan Ret[T], 1)
 	var lck = sync.Mutex{}
@@ -111,15 +147,15 @@ func Sequence[T any](even HasNext[T]) chan Ret[T] {
 		lck.Lock()
 
 		if closingOrClosed {
-			fmt.Println("warning channel closed (Continue called1 twice?)")
+			fmt.Println("warning channel closed (Continue called more than once?)")
 			doUnlock(m, &lck)
 			return
 		}
 
 		// they are all reading from the same channel
-		// so if this call blocks, then all the other Next() calls would block too anyway
+		// so if the .Next call blocks, then all the other Next() calls would block also, anyway
 		// so it's ok (and probably imperative) to surround the Next() call with locks lol fml
-		var b, v = even.Next()
+		var b, v = h.Next()
 		if b {
 			// we now know the channel/stream is done reading from, etc
 			closingOrClosed = true
