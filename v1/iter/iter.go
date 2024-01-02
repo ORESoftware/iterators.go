@@ -67,8 +67,27 @@ func (h *FromList[T]) Next() (bool, T) {
 	return false, el
 }
 
+type FromListOfPointers[T any] struct {
+	list  []*T
+	index int
+}
+
+func (h *FromListOfPointers[T]) Next() (bool, T) {
+	if h.index >= len(h.list) {
+		var zero T // zero value of type T
+		return true, zero
+	}
+	el := h.list[h.index]
+	h.index++
+	return false, *el
+}
+
 func SeqFromList[T any](concurrency int, v []T) chan Ret[T] {
 	return Sequence[T](concurrency, &FromList[T]{v, 0})
+}
+
+func SeqFromListOfPointers[T any](concurrency int, v []*T) chan Ret[T] {
+	return Sequence[T](concurrency, &FromListOfPointers[T]{v, 0})
 }
 
 type HsNext[T any] struct {
