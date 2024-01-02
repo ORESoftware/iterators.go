@@ -67,8 +67,8 @@ func (h *FromList[T]) Next() (bool, T) {
 	return false, el
 }
 
-func SeqFromList[T any](v []T) chan Ret[T] {
-	return Sequence[T](&FromList[T]{v, 0})
+func SeqFromList[T any](concurrency int, v []T) chan Ret[T] {
+	return Sequence[T](concurrency, &FromList[T]{v, 0})
 }
 
 type HsNext[T any] struct {
@@ -83,8 +83,8 @@ func (h *FromNexter[T]) Next() (bool, T) {
 	return h.c.Next()
 }
 
-func FromNext[T any](v HsNext[T]) chan Ret[T] {
-	return Sequence[T](&FromNexter[T]{v})
+func FromNext[T any](concurrency int, v HsNext[T]) chan Ret[T] {
+	return Sequence[T](concurrency, &FromNexter[T]{v})
 }
 
 type FromChan[T any] struct {
@@ -96,8 +96,8 @@ func (h *FromChan[T]) Next() (bool, T) {
 	return !ok, value
 }
 
-func AsyncSequence[T any](v chan T) chan Ret[T] {
-	return Sequence[T](&FromChan[T]{v})
+func AsyncSequence[T any](concurrency int, v chan T) chan Ret[T] {
+	return Sequence[T](concurrency, &FromChan[T]{v})
 }
 
 // func SequenceFromROChan[T any](v <-chan T) chan Ret[T] {
@@ -126,8 +126,8 @@ func (s *internalSeq[T]) Next() (bool, T) {
 	return s.n.Next()
 }
 
-func Seq[T any](req struct{ Next func() (bool, T) }) chan Ret[T] {
-	return Sequence[T](&internalSeq[T]{req})
+func Seq[T any](concurrency int, req struct{ Next func() (bool, T) }) chan Ret[T] {
+	return Sequence[T](concurrency, &internalSeq[T]{req})
 }
 
 // IOReader
@@ -147,12 +147,19 @@ type Writer[T any] interface {
 	Write(p []T) (n int, err error)
 }
 
-func Sequence[T any](h HasNext[T]) chan Ret[T] {
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func Sequence[T any](concurrency int, h HasNext[T]) chan Ret[T] {
 
 	var c = make(chan Ret[T], 1)
 	var lck = sync.Mutex{}
 	var closingOrClosed = false
-	var maxConcurrency = make(chan int, 5)
+	var maxConcurrency = make(chan int, max(1, concurrency))
 	var done = false
 	var count = 0
 
