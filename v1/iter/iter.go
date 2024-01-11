@@ -5,6 +5,20 @@ import (
 	"sync"
 )
 
+type IReader interface {
+	Read(p []byte) (n int, err error)
+}
+
+type IWriter interface {
+	Write(p []byte) (n int, err error)
+}
+
+// Define a new interface that combines Reader and Writer
+type IReadWriter interface {
+	IReader
+	IWriter
+}
+
 type ConnectToProducer[T any] interface {
 	ConnectToProducer() chan T
 }
