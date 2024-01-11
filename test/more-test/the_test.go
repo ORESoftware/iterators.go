@@ -1,10 +1,11 @@
-package main
+package more_test
 
 import (
 	"fmt"
 	"github.com/oresoftware/go-iterators/v1/iter"
 	"math/rand"
 	"time"
+	"testing"
 )
 
 func longRunningTask() chan int {
@@ -58,26 +59,26 @@ func NewIterable2() *Iterable[int] {
 	return &Iterable[int]{n, 3}
 }
 
-func main() {
-	//even := NewIterable()
-	//println(even.Next()) // Example usage
-	//println(even.Next())
+func TestMy(t *testing.T) {
+	// even := NewIterable()
+	// println(even.Next()) // Example usage
+	// println(even.Next())
 
-	//for {
+	// for {
 	//	var b, v = even.Next()
 	//	fmt.Println(v)
 	//	if b {
 	//		break
 	//	}
-	//}
+	// }
 
-	for r := range iter.Sequence[int](NewIterable()) {
+	for r := range iter.Sequence[int](8, NewIterable()) {
 
 		if r.Done {
 			panic("never should be done")
 		}
 
-		//time.Sleep(time.Millisecond * 500)
+		// time.Sleep(time.Millisecond * 500)
 
 		go func(r iter.Ret[int]) {
 
@@ -91,23 +92,23 @@ func main() {
 				r.StartNextTask()
 			}(r)
 
-			//fmt.Println("value z:", r)
-			//if !r.Done {
+			// fmt.Println("value z:", r)
+			// if !r.Done {
 			//
-			//}
+			// }
 		}(r)
 
 	}
 
 	fmt.Println("exiting 1")
 
-	for r := range iter.Sequence[int](NewIterable()) {
+	for r := range iter.Sequence[int](7, NewIterable()) {
 
 		if r.Done {
 			panic("never should be done")
 		}
 
-		//time.Sleep(time.Millisecond * 500)
+		// time.Sleep(time.Millisecond * 500)
 
 		r.StartNextTask()
 
@@ -116,10 +117,10 @@ func main() {
 			fmt.Println("value z:", r)
 			time.Sleep(time.Millisecond * 500)
 			r.MarkTaskAsComplete()
-			//fmt.Println("value z:", r)
-			//if !r.Done {
+			// fmt.Println("value z:", r)
+			// if !r.Done {
 			//
-			//}
+			// }
 		}(r)
 
 	}
@@ -128,28 +129,28 @@ func main() {
 
 	s := make(chan int, 5)
 
-	for r := range iter.Sequence[int](NewIterable()) {
+	for r := range iter.Sequence[int](6, NewIterable()) {
 
 		if r.Done {
 			panic("never should be done")
 		}
 
-		//time.Sleep(time.Millisecond * 500)
+		// time.Sleep(time.Millisecond * 500)
 
 		s <- 1
 
-		//if !r.Done {
+		// if !r.Done {
 		r.StartNextTask()
-		//}
+		// }
 
-		//time.Sleep((1 / 1) * time.Second)
+		// time.Sleep((1 / 1) * time.Second)
 
-		//if true || !r.Done {
+		// if true || !r.Done {
 		//
 		//	r.StartNextTask()
 		//	r.StartNextTask()
 		//
-		//}
+		// }
 		fmt.Println("value:", r)
 
 		if true || !r.Done {
@@ -165,17 +166,17 @@ func main() {
 				r.MarkTaskAsComplete()
 			}(r)
 
-			//r.StartNextTask()
+			// r.StartNextTask()
 		}
 
-		//go func() {
+		// go func() {
 		//	time.Sleep(1 * time.Second)
 		//	r.StartNextTask()
-		//}()
+		// }()
 
 	}
 
-	for r := range iter.Sequence[int](NewIterable0()) {
+	for r := range iter.Sequence[int](8, NewIterable0()) {
 
 		if r.Done {
 			panic("never should be done")
@@ -190,7 +191,7 @@ func main() {
 		r.MarkTaskAsComplete()
 	}
 
-	for r := range iter.Sequence[int](NewIterable1()) {
+	for r := range iter.Sequence[int](3, NewIterable1()) {
 
 		if r.Done {
 			panic("never should be done")
@@ -201,7 +202,7 @@ func main() {
 		r.MarkTaskAsComplete()
 	}
 
-	for r := range iter.Sequence[int](NewIterable2()) {
+	for r := range iter.Sequence[int](5, NewIterable2()) {
 
 		if r.Done {
 			panic("never should be done")
@@ -216,7 +217,7 @@ func main() {
 
 	lrt := longRunningTask()
 
-	for r := range iter.AsyncSequence(lrt) {
+	for r := range iter.AsyncSequence(4, lrt) {
 
 		if r.Done {
 			panic("never should be done")

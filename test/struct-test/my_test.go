@@ -1,9 +1,10 @@
-package main
+package struct_test
 
 import (
 	"fmt"
 	"github.com/oresoftware/go-iterators/v1/iter"
 	"time"
+	"testing"
 )
 
 func longRunningTask() chan int {
@@ -34,18 +35,17 @@ func acceptStructWithNext[T any](r struct{ Next func() (bool, T) }) {
 	fmt.Println(r)
 }
 
-func main() {
+func TestStruct(t *testing.T) {
 
-	//iterable := Iterable[int]{
+	// iterable := Iterable[int]{
 	//	Val: 0,
 	//	End: 100,
 	//	Next: func() (bool, int) {
 	//		return true, 0
 	//	},
-	//}
+	// }
 
 	iterable := struct {
-		Name string
 		Next func() (bool, int)
 	}{
 		Next: func() (bool, int) {
@@ -55,13 +55,13 @@ func main() {
 
 	acceptStructWithNext[int](iterable)
 
-	for r := range iter.Seq[int](iterable) {
+	for r := range iter.Seq[int](3, iterable) {
 
 		if r.Done {
 			panic("never should be done")
 		}
 
-		//time.Sleep(time.Millisecond * 500)
+		// time.Sleep(time.Millisecond * 500)
 
 		go func(r iter.Ret[int]) {
 
@@ -75,10 +75,10 @@ func main() {
 				r.StartNextTask()
 			}(r)
 
-			//fmt.Println("value z:", r)
-			//if !r.Done {
+			// fmt.Println("value z:", r)
+			// if !r.Done {
 			//
-			//}
+			// }
 		}(r)
 
 	}

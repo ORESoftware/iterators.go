@@ -26,7 +26,7 @@ func longRunningTask() chan int {
 
 func main() {
 
-	for r := range iter.SeqFromList([]int{1, 2, 3}) {
+	for r := range iter.SeqFromList(3, []int{1, 2, 3}) {
 
 		if r.Done {
 			panic("never should be done")
