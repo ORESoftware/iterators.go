@@ -34,6 +34,6 @@ git push origin || {
   echo
 }
 
-git push gitlab || {
-  echo
-}
+#git push gitlab || {
+#  echo
+#}
