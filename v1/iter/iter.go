@@ -69,9 +69,12 @@ type Ret[T any] struct {
 type FromList[T any] struct {
 	list  []T
 	index int
+	mtx   sync.Mutex
 }
 
 func (h *FromList[T]) Next() (bool, T) {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
 	if h.index >= len(h.list) {
 		var zero T // zero value of type T
 		return true, zero
@@ -84,9 +87,12 @@ func (h *FromList[T]) Next() (bool, T) {
 type FromListOfPointers[T any] struct {
 	list  []*T
 	index int
+	mtx   sync.Mutex
 }
 
 func (h *FromListOfPointers[T]) Next() (bool, T) {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
 	if h.index >= len(h.list) {
 		var zero T // zero value of type T
 		return true, zero
@@ -97,11 +103,11 @@ func (h *FromListOfPointers[T]) Next() (bool, T) {
 }
 
 func SeqFromList[T any](concurrency int, v []T) chan Ret[T] {
-	return Sequence[T](concurrency, &FromList[T]{v, 0})
+	return Sequence[T](concurrency, &FromList[T]{v, 0, sync.Mutex{}})
 }
 
 func SeqFromListOfPointers[T any](concurrency int, v []*T) chan Ret[T] {
-	return Sequence[T](concurrency, &FromListOfPointers[T]{v, 0})
+	return Sequence[T](concurrency, &FromListOfPointers[T]{v, 0, sync.Mutex{}})
 }
 
 type HsNext[T any] struct {
@@ -109,28 +115,34 @@ type HsNext[T any] struct {
 }
 
 type FromNexter[T any] struct {
-	c HsNext[T]
+	c   HsNext[T]
+	mtx sync.Mutex
 }
 
 func (h *FromNexter[T]) Next() (bool, T) {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
 	return h.c.Next()
 }
 
 func FromNext[T any](concurrency int, v HsNext[T]) chan Ret[T] {
-	return Sequence[T](concurrency, &FromNexter[T]{v})
+	return Sequence[T](concurrency, &FromNexter[T]{v, sync.Mutex{}})
 }
 
 type FromChan[T any] struct {
-	c chan T
+	c   chan T
+	mtx sync.Mutex
 }
 
 func (h *FromChan[T]) Next() (bool, T) {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
 	value, ok := <-h.c
 	return !ok, value
 }
 
 func AsyncSequence[T any](concurrency int, v chan T) chan Ret[T] {
-	return Sequence[T](concurrency, &FromChan[T]{v})
+	return Sequence[T](concurrency, &FromChan[T]{v, sync.Mutex{}})
 }
 
 // func SequenceFromROChan[T any](v <-chan T) chan Ret[T] {
@@ -152,15 +164,18 @@ type HasNext[T any] interface {
 }
 
 type internalSeq[T any] struct {
-	n struct{ Next func() (bool, T) }
+	n   struct{ Next func() (bool, T) }
+	mtx sync.Mutex
 }
 
 func (s *internalSeq[T]) Next() (bool, T) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	return s.n.Next()
 }
 
 func Seq[T any](concurrency int, req struct{ Next func() (bool, T) }) chan Ret[T] {
-	return Sequence[T](concurrency, &internalSeq[T]{req})
+	return Sequence[T](concurrency, &internalSeq[T]{req, sync.Mutex{}})
 }
 
 // IOReader
