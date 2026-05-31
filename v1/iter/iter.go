@@ -1,7 +1,6 @@
 package iter
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -151,14 +150,6 @@ func AsyncSequence[T any](concurrency int, v chan T) chan Ret[T] {
 
 // TODO: do Read() interface
 
-func doUnlock(locks ...*sync.Mutex) {
-	for _, lck := range locks {
-		if lck != nil {
-			lck.Unlock()
-		}
-	}
-}
-
 type HasNext[T any] interface {
 	Next() (bool, T)
 }
@@ -205,80 +196,89 @@ func max(a, b int) int {
 func Sequence[T any](concurrency int, h HasNext[T]) chan Ret[T] {
 
 	var c = make(chan Ret[T], 1)
-	var lck = sync.Mutex{}
-	var closingOrClosed = false
-	var maxConcurrency = make(chan int, max(1, concurrency))
-	var done = false
-	var count = 0
 
-	var writeToChan func(m *sync.Mutex)
+	// mtx guards every piece of shared mutable state below
+	// (exhausted, closed and count). Previously the producer mutated this
+	// state under one mutex while the per-task callbacks mutated it under a
+	// different (per-task) mutex, which is a data race and could also close
+	// the channel twice / send on a closed channel.
+	var mtx = sync.Mutex{}
+	var exhausted = false // the source signalled "done"
+	var closed = false    // the output channel has been closed
+	var count = 0         // tasks produced but not yet marked complete (in flight)
 
-	writeToChan = func(m *sync.Mutex) {
+	// maxConcurrency is a counting semaphore bounding the number of in-flight tasks.
+	var maxConcurrency = make(chan struct{}, max(1, concurrency))
 
-		lck.Lock()
-
-		if closingOrClosed {
-			fmt.Println("warning channel closed (Continue called more than once?)")
-			doUnlock(m, &lck)
-			return
+	// maybeClose closes the output channel exactly once, once the source is
+	// exhausted and there are no in-flight tasks left. Must be called with mtx held.
+	var maybeClose = func() {
+		if !closed && exhausted && count <= 0 {
+			closed = true
+			close(c)
 		}
-
-		// they are all reading from the same channel
-		// so if the .Next call blocks, then all the other Next() calls would block also, anyway
-		// so it's ok (and probably imperative) to surround the Next() call with locks lol fml
-		var b, v = h.Next()
-		if b {
-			// we now know the channel/stream is done reading from, etc
-			closingOrClosed = true
-			if !done && count <= 0 {
-				done = true
-				close(c)
-			}
-			doUnlock(m, &lck)
-			return
-		}
-
-		if done {
-			doUnlock(m, &lck)
-			return
-		}
-
-		maxConcurrency <- 1
-		count++
-		doUnlock(m, &lck)
-
-		var called1 = false
-		var called2 = false
-		var l = sync.Mutex{}
-
-		c <- Ret[T]{b, v, func() {
-			l.Lock()
-			if !called1 {
-				called1 = true
-				if !closingOrClosed {
-					// we pass &l pass that we block here ***+++
-					go writeToChan(&l)
-				}
-				return
-			}
-			l.Unlock()
-		}, func() {
-			l.Lock() // need to block here ***+++
-			if !called2 {
-				called2 = true
-				count--
-				<-maxConcurrency
-				if !done && count <= 0 {
-					done = true
-					close(c)
-				}
-			}
-			l.Unlock()
-		}}
-
 	}
 
-	go writeToChan(nil)
+	var produce func()
+
+	produce = func() {
+
+		mtx.Lock()
+
+		if exhausted || closed {
+			// Source is drained (or channel already closed): nothing left to do.
+			mtx.Unlock()
+			return
+		}
+
+		// All producers read from the same source under the lock, so Next() is
+		// serialized. If Next() blocks then every producer would block on the
+		// same source anyway, so holding the lock across it is acceptable.
+		var done, value = h.Next()
+
+		if done {
+			exhausted = true
+			maybeClose()
+			mtx.Unlock()
+			return
+		}
+
+		count++
+		mtx.Unlock()
+
+		// Acquire a concurrency slot outside the lock so the semaphore (rather
+		// than the lock) is what actually bounds in-flight work. While this
+		// task is in flight count >= 1, so the channel cannot be closed from
+		// under the pending send below.
+		maxConcurrency <- struct{}{}
+
+		var startOnce sync.Once
+		var completeOnce sync.Once
+
+		var startNextTask = func() {
+			// Idempotent: requests the next item from the source exactly once.
+			startOnce.Do(func() {
+				go produce()
+			})
+		}
+
+		var markTaskAsComplete = func() {
+			// Idempotent: releases this task's concurrency slot exactly once and
+			// closes the output channel if the source is drained and this was the
+			// last in-flight task.
+			completeOnce.Do(func() {
+				<-maxConcurrency
+				mtx.Lock()
+				count--
+				maybeClose()
+				mtx.Unlock()
+			})
+		}
+
+		c <- Ret[T]{done, value, startNextTask, markTaskAsComplete}
+	}
+
+	go produce()
 	return c
 
 }

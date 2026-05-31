@@ -1,50 +1,41 @@
 package main
 
 import (
-	"github.com/oresoftware/go-iterators/v1/iter"
 	"fmt"
+	"github.com/oresoftware/go-iterators/v1/iter"
+	"sync"
 	"time"
 )
 
-type Nextr struct {
-	Val func() (bool, int)
-}
-
-func (n *Nextr) Next() (bool, int) {
-	return true, 0
-}
-
 func main() {
 
-	var n = Nextr{
-		Val: func() (bool, int) {
-			return true, 3
-		}}
+	// A simple source: emit the integers 1..5, then signal done.
+	i := 0
+	var mtx sync.Mutex
 
-	for r := range iter.FromNext[Nextr](n) {
+	n := iter.HsNext[int]{
+		Next: func() (bool, int) {
+			mtx.Lock()
+			defer mtx.Unlock()
+			if i >= 5 {
+				return true, 0
+			}
+			i++
+			return false, i
+		},
+	}
+
+	for r := range iter.FromNext[int](3, n) {
 
 		if r.Done {
 			panic("never should be done")
 		}
 
-		// time.Sleep(time.Millisecond * 500)
-
 		go func(r iter.Ret[int]) {
-
-			fmt.Println("value e:", r)
+			fmt.Println("value e:", r.Value)
 			time.Sleep(time.Millisecond * 10)
 			r.StartNextTask()
-
-			go func(r iter.Ret[int]) {
-				time.Sleep(time.Millisecond * 500)
-				r.StartNextTask()
-				r.MarkTaskAsComplete()
-			}(r)
-
-			// fmt.Println("value z:", r)
-			// if !r.Done {
-			//
-			// }
+			r.MarkTaskAsComplete()
 		}(r)
 
 	}
