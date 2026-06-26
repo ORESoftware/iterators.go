@@ -6,7 +6,9 @@
 > `remote/modules/github/oresoftware/go-iterators` — make changes here, not in that submodule checkout.
 >
 > On disk: submodule checkout `~/codes/ores/k8s-cluster/remote/modules/github/oresoftware/go-iterators`.
-<!-- END k8s-cluster-submodule-notice --># Async Iterators in Golang
+<!-- END k8s-cluster-submodule-notice -->
+
+# Async Iterators in Golang
 
 Control iteration with — gasp! — callbacks.
 
