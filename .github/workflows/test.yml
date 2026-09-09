@@ -43,5 +43,5 @@ jobs:
 
       - name: Exercise iterator fuzz invariants
         run: |
-          go test ./v1/iter -run='^$' -fuzz=FuzzSequence -fuzztime=3s
-          go test ./v1/iter -run='^$' -fuzz=FuzzSequenceChaos -fuzztime=3s
+          go test ./v1/iter -run='^$' -fuzz='^FuzzSequence$' -fuzztime=3s
+          go test ./v1/iter -run='^$' -fuzz='^FuzzSequenceChaos$' -fuzztime=3s
