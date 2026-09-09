@@ -198,16 +198,18 @@ func Sequence[T any](concurrency int, h HasNext[T]) chan Ret[T] {
 	var c = make(chan Ret[T], 1)
 
 	// mtx guards every piece of shared mutable state below
-	// (exhausted, closed and count). Previously the producer mutated this
-	// state under one mutex while the per-task callbacks mutated it under a
-	// different (per-task) mutex, which is a data race and could also close
-	// the channel twice / send on a closed channel.
+	// (exhausted, closed and count). The source is also read under this mutex,
+	// so source implementations do not need their own synchronization merely
+	// because the consumer drives Sequence concurrently.
 	var mtx = sync.Mutex{}
 	var exhausted = false // the source signalled "done"
 	var closed = false    // the output channel has been closed
 	var count = 0         // tasks produced but not yet marked complete (in flight)
 
-	// maxConcurrency is a counting semaphore bounding the number of in-flight tasks.
+	// maxConcurrency is a counting semaphore bounding both source reservation
+	// and the number of in-flight tasks. A producer must own a slot before it
+	// calls Next(), so a side-effecting source cannot be pulled one item ahead of
+	// the advertised concurrency limit.
 	var maxConcurrency = make(chan struct{}, max(1, concurrency))
 
 	// maybeClose closes the output channel exactly once, once the source is
@@ -222,12 +224,16 @@ func Sequence[T any](concurrency int, h HasNext[T]) chan Ret[T] {
 	var produce func()
 
 	produce = func() {
+		// Reserve capacity before touching the source. Previously Next() was
+		// called before acquiring this slot, permitting one item of source
+		// read-ahead beyond the configured concurrency bound.
+		maxConcurrency <- struct{}{}
 
 		mtx.Lock()
 
 		if exhausted || closed {
-			// Source is drained (or channel already closed): nothing left to do.
 			mtx.Unlock()
+			<-maxConcurrency
 			return
 		}
 
@@ -240,17 +246,12 @@ func Sequence[T any](concurrency int, h HasNext[T]) chan Ret[T] {
 			exhausted = true
 			maybeClose()
 			mtx.Unlock()
+			<-maxConcurrency
 			return
 		}
 
 		count++
 		mtx.Unlock()
-
-		// Acquire a concurrency slot outside the lock so the semaphore (rather
-		// than the lock) is what actually bounds in-flight work. While this
-		// task is in flight count >= 1, so the channel cannot be closed from
-		// under the pending send below.
-		maxConcurrency <- struct{}{}
 
 		var startOnce sync.Once
 		var completeOnce sync.Once
