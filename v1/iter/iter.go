@@ -42,6 +42,14 @@ type TransformStream[K any, T any] struct {
 	c chan T
 }
 
+// func (t *TransformStream[int, int]) Transform(c chan int) chan int {
+//	k := make(chan int)
+//	for x := range c {
+//		k <- x
+//	}
+//	return k
+// }
+
 func (r *ReadStream[T, K]) Pipe() {
 
 }
@@ -67,7 +75,7 @@ func (h *FromList[T]) Next() (bool, T) {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 	if h.index >= len(h.list) {
-		var zero T
+		var zero T // zero value of type T
 		return true, zero
 	}
 	el := h.list[h.index]
@@ -85,7 +93,7 @@ func (h *FromListOfPointers[T]) Next() (bool, T) {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 	if h.index >= len(h.list) {
-		var zero T
+		var zero T // zero value of type T
 		return true, zero
 	}
 	el := h.list[h.index]
@@ -136,6 +144,12 @@ func AsyncSequence[T any](concurrency int, v chan T) chan Ret[T] {
 	return Sequence[T](concurrency, &FromChan[T]{v, sync.Mutex{}})
 }
 
+// func SequenceFromROChan[T any](v <-chan T) chan Ret[T] {
+//	return Sequence[T](FromChan[T]{v})
+// }
+
+// TODO: do Read() interface
+
 type HasNext[T any] interface {
 	Next() (bool, T)
 }
@@ -155,12 +169,13 @@ func Seq[T any](concurrency int, req struct{ Next func() (bool, T) }) chan Ret[T
 	return Sequence[T](concurrency, &internalSeq[T]{req, sync.Mutex{}})
 }
 
+// IOReader
 type IOReader interface {
 	Read(p []byte) (n int, err error)
 }
 
 type Reader[T any] interface {
-	Read(p []T) (n int, err error)
+	Read(p []T) (n int, err error) // the array represents how many times reading from a chan
 }
 
 type IOWriter interface {
@@ -182,20 +197,23 @@ func Sequence[T any](concurrency int, h HasNext[T]) chan Ret[T] {
 
 	var c = make(chan Ret[T], 1)
 
-	// mtx guards every piece of shared mutable state below. Source Next calls are
-	// serialized as well, so a source implementation does not need its own
-	// synchronization merely because the consumer drives Sequence concurrently.
+	// mtx guards every piece of shared mutable state below
+	// (exhausted, closed and count). The source is also read under this mutex,
+	// so source implementations do not need their own synchronization merely
+	// because the consumer drives Sequence concurrently.
 	var mtx = sync.Mutex{}
-	var exhausted = false
-	var closed = false
-	var count = 0
+	var exhausted = false // the source signalled "done"
+	var closed = false    // the output channel has been closed
+	var count = 0         // tasks produced but not yet marked complete (in flight)
 
-	// maxConcurrency is both the task concurrency bound and the source-reservation
-	// bound. A producer must own a slot before calling Next(), so a side-effecting
-	// or blocking source can never be pulled for item N+1 while N tasks already
-	// hold all configured slots.
+	// maxConcurrency is a counting semaphore bounding both source reservation
+	// and the number of in-flight tasks. A producer must own a slot before it
+	// calls Next(), so a side-effecting source cannot be pulled one item ahead of
+	// the advertised concurrency limit.
 	var maxConcurrency = make(chan struct{}, max(1, concurrency))
 
+	// maybeClose closes the output channel exactly once, once the source is
+	// exhausted and there are no in-flight tasks left. Must be called with mtx held.
 	var maybeClose = func() {
 		if !closed && exhausted && count <= 0 {
 			closed = true
@@ -206,19 +224,24 @@ func Sequence[T any](concurrency int, h HasNext[T]) chan Ret[T] {
 	var produce func()
 
 	produce = func() {
-		// Reserve capacity before touching the source. The previous order called
-		// Next() and incremented count before acquiring this slot, which allowed
-		// one item of read-ahead beyond the advertised concurrency limit.
+		// Reserve capacity before touching the source. Previously Next() was
+		// called before acquiring this slot, permitting one item of source
+		// read-ahead beyond the configured concurrency bound.
 		maxConcurrency <- struct{}{}
 
 		mtx.Lock()
+
 		if exhausted || closed {
 			mtx.Unlock()
 			<-maxConcurrency
 			return
 		}
 
+		// All producers read from the same source under the lock, so Next() is
+		// serialized. If Next() blocks then every producer would block on the
+		// same source anyway, so holding the lock across it is acceptable.
 		var done, value = h.Next()
+
 		if done {
 			exhausted = true
 			maybeClose()
@@ -234,12 +257,16 @@ func Sequence[T any](concurrency int, h HasNext[T]) chan Ret[T] {
 		var completeOnce sync.Once
 
 		var startNextTask = func() {
+			// Idempotent: requests the next item from the source exactly once.
 			startOnce.Do(func() {
 				go produce()
 			})
 		}
 
 		var markTaskAsComplete = func() {
+			// Idempotent: releases this task's concurrency slot exactly once and
+			// closes the output channel if the source is drained and this was the
+			// last in-flight task.
 			completeOnce.Do(func() {
 				<-maxConcurrency
 				mtx.Lock()
@@ -254,4 +281,5 @@ func Sequence[T any](concurrency int, h HasNext[T]) chan Ret[T] {
 
 	go produce()
 	return c
+
 }
